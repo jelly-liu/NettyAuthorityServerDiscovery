@@ -1,5 +1,6 @@
 package com.jelly;
 
+import com.jelly.handler.AuthorityClientHandler;
 import com.jelly.model.User;
 import com.jelly.util.ProtoStuffSerializer;
 import io.netty.bootstrap.Bootstrap;
@@ -35,7 +36,7 @@ public class NettyClient {
                 ch.pipeline().addLast(new ByteArrayDecoder());//2
                 ch.pipeline().addLast(new LengthFieldPrepender(4));//2
                 ch.pipeline().addLast(new ByteArrayEncoder());//1
-                ch.pipeline().addLast(new MyClientHandler());
+                ch.pipeline().addLast(new AuthorityClientHandler());
             }
         });
 
@@ -58,7 +59,7 @@ public class NettyClient {
                 String name = "abc_def_ghi__" + i;
                 User user = new User(name, i);
                 byte[] bytes = ProtoStuffSerializer.serialize(user);
-                logger.debug("MyClientHandler write msg={}", bytes);
+                logger.debug("AuthorityClientHandler write msg={}", bytes);
                 NettyClient.channel.writeAndFlush(bytes);
                 try {
                     Thread.sleep(9000);

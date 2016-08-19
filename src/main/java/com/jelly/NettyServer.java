@@ -1,5 +1,6 @@
 package com.jelly;
 
+import com.jelly.handler.AuthorityServerHandler;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -33,7 +34,7 @@ public class NettyServer {
                     ch.pipeline().addLast(new ByteArrayDecoder());//2
                     ch.pipeline().addLast(new LengthFieldPrepender(4));//2
                     ch.pipeline().addLast(new ByteArrayEncoder());//1
-                    ch.pipeline().addLast(new MyServerHandler());
+                    ch.pipeline().addLast(new AuthorityServerHandler());
                 }
             });
 
