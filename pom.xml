@@ -1,0 +1,72 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.jelly</groupId>
+  <artifactId>NettyAuthorityServerDiscovery</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>NettyAuthorityServerDiscovery</name>
+  <url>http://maven.apache.org</url>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.11</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>3.4</version>
+    </dependency>
+    <!-- https://mvnrepository.com/artifact/org.slf4j/slf4j-log4j12 -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-log4j12</artifactId>
+      <version>1.7.21</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-all</artifactId>
+      <version>4.1.4.Final</version>
+    </dependency>
+    <dependency>
+      <groupId>io.protostuff</groupId>
+      <artifactId>protostuff-core</artifactId>
+      <version>1.4.4</version>
+    </dependency>
+    <dependency>
+      <groupId>io.protostuff</groupId>
+      <artifactId>protostuff-runtime</artifactId>
+      <version>1.4.4</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>NettyAuthorityServerDiscovery</finalName>
+    <resources>
+      <resource>
+        <directory>src/main/java</directory>
+        <includes>
+          <include>**/*.*</include>
+        </includes>
+        <excludes>
+          <exclude>**/*.java</exclude>
+        </excludes>
+      </resource>
+      <resource>
+        <directory>src/main/resource</directory>
+        <includes>
+          <include>**/*.*</include>
+        </includes>
+      </resource>
+    </resources>
+  </build>
+</project>
