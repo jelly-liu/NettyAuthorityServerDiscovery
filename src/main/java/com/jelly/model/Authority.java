@@ -30,6 +30,7 @@ public class Authority {
         this.user = user;
     }
 
+    //if number mod 5 is 0, authority pass
     public static boolean isPass(User user){
         String iStr = StringUtils.substringAfterLast(user.getName(), "__");
         int i = Integer.parseInt(iStr);
