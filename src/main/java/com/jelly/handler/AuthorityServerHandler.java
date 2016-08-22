@@ -19,12 +19,12 @@ public class AuthorityServerHandler extends ChannelInboundHandlerAdapter {
         byte[] bytes = (byte[]) msg;
         User user = ProtoStuffSerializer.deserialize(bytes, User.class);
         //notice, you should use your thread pool to process data
-        logger.debug("receive data, object={}", user);
+        System.out.println("receive data, object=" + user);
 
         Authority authority = new Authority(user, Authority.isPass(user));
         bytes = ProtoStuffSerializer.serialize(authority);
         ctx.write(bytes);
-        logger.debug("send data, object={}", authority);
+        System.out.println("send data, object=" + authority);
     }
 
     @Override

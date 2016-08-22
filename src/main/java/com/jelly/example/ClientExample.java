@@ -1,4 +1,4 @@
-package com.jelly.serviceDiscovery;
+package com.jelly.example;
 
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -21,18 +21,18 @@ import java.util.List;
 public class ClientExample {
     public static void main(String[] args) throws Exception {
         CuratorFramework client = null;
-        ServiceDiscovery<InstanceDetails> serviceDiscovery = null;
+        ServiceDiscovery<InstanceDetailsExample> serviceDiscovery = null;
         try {
-            client = CuratorFrameworkFactory.newClient(ZkConfig.ZK_ADDRESS, new ExponentialBackoffRetry(1000, 3));
+            client = CuratorFrameworkFactory.newClient(ZkConfigExample.ZK_ADDRESS, new ExponentialBackoffRetry(1000, 3));
             client.start();
 
-            JsonInstanceSerializer<InstanceDetails> serializer = new JsonInstanceSerializer(InstanceDetails.class);
-            serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(ZkConfig.PATH).serializer(serializer).build();
+            JsonInstanceSerializer<InstanceDetailsExample> serializer = new JsonInstanceSerializer(InstanceDetailsExample.class);
+            serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetailsExample.class).client(client).basePath(ZkConfigExample.PATH).serializer(serializer).build();
             serviceDiscovery.start();
 
-            printCurrentServerList((List<ServiceInstance<InstanceDetails>>)serviceDiscovery.queryForInstances(ZkConfig.SERVICE_NAME));
+            printCurrentServerList((List<ServiceInstance<InstanceDetailsExample>>)serviceDiscovery.queryForInstances(ZkConfigExample.SERVICE_NAME));
 
-            final ServiceCache<InstanceDetails> serviceCache = serviceDiscovery.serviceCacheBuilder().name(ZkConfig.SERVICE_NAME).build();
+            final ServiceCache<InstanceDetailsExample> serviceCache = serviceDiscovery.serviceCacheBuilder().name(ZkConfigExample.SERVICE_NAME).build();
             serviceCache.addListener(new ServiceCacheListener() {
                 @Override
                 public void cacheChanged() {
@@ -53,14 +53,14 @@ public class ClientExample {
         }
     }
 
-    private static void printCurrentServerList(List<ServiceInstance<InstanceDetails>> serviceInstanceList) {
+    private static void printCurrentServerList(List<ServiceInstance<InstanceDetailsExample>> serviceInstanceList) {
         if(serviceInstanceList == null || serviceInstanceList.size() == 0){
-            System.out.println("ServiceWatcher, but can not find any service of this service name=" + ZkConfig.SERVICE_NAME);
+            System.out.println("ServiceWatcher, but can not find any service of this service name=" + ZkConfigExample.SERVICE_NAME);
             return;
         }
 
-        for(ServiceInstance<InstanceDetails> serviceInstance : serviceInstanceList){
-            System.out.println("ServiceWatcher, find service of this service name=" + ZkConfig.SERVICE_NAME + ", instanceDetails=" + serviceInstance.getPayload());
+        for(ServiceInstance<InstanceDetailsExample> serviceInstance : serviceInstanceList){
+            System.out.println("ServiceWatcher, find service of this service name=" + ZkConfigExample.SERVICE_NAME + ", instanceDetails=" + serviceInstance.getPayload());
         }
     }
 }

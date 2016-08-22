@@ -1,6 +1,9 @@
 package com.jelly;
 
 import com.jelly.handler.AuthorityServerHandler;
+import com.jelly.serviceDiscovery.InstanceDetails;
+import com.jelly.serviceDiscovery.ServiceUtil;
+import com.jelly.serviceDiscovery.ZkServiceConf;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -12,7 +15,14 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.bytes.ByteArrayDecoder;
 import io.netty.handler.codec.bytes.ByteArrayEncoder;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.log4j.Logger;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 /**
  * Created by jelly on 2016-8-19.
@@ -20,7 +30,9 @@ import org.apache.log4j.Logger;
 public class NettyServer {
     private static Logger logger = Logger.getLogger(NettyServer.class);
 
-    public void start(int port) throws Exception {
+    private static CuratorFramework client = null;
+
+    public void start(String host, int port) throws Exception {
         EventLoopGroup bossGroup = new NioEventLoopGroup();
         EventLoopGroup workerGroup = new NioEventLoopGroup();
         try {
@@ -39,7 +51,9 @@ public class NettyServer {
             });
 
             // Start the server.
-            ChannelFuture channelFuture = serverBootstrap.bind(port).sync();
+            ChannelFuture channelFuture = serverBootstrap.bind(host, port).sync();
+            //checkAndRegister server
+            registerServer(host, port);
             // Wait until the server socket is closed.
             channelFuture.channel().closeFuture().sync();
         } finally {
@@ -49,8 +63,48 @@ public class NettyServer {
         }
     }
 
+    private static void registerServer(String host, int port){
+        if(client == null){
+            synchronized (logger){
+                client = CuratorFrameworkFactory.newClient(ZkServiceConf.ZK_ADDRESS, new ExponentialBackoffRetry(1000, 3));
+                client.start();
+            }
+        }
+        ServiceUtil.checkAndRegister(client, new InstanceDetails(host, port));
+    }
+
     public static void main(String[] args) throws Exception {
-        logger.debug("NettyServer start...");
-        new NettyServer().start(5555);
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        while (true){
+            System.out.print("\nPlease enter an number as port, [1 <= port <= 100], --->");
+            String portStr = in.readLine();
+            if(StringUtils.isEmpty(portStr)){
+                continue;
+            }
+
+            int port = -1;
+            try{
+                port = Integer.parseInt(portStr);
+                if(!(1 <= port && port <=100)){
+                    continue;
+                }
+            }catch (Exception e){
+                System.out.print("\nPlease Enter An Number>>>>>>");
+                e.printStackTrace();
+                continue;
+            }
+
+            int finalPort = port;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        new NettyServer().start("127.0.0.1", 12000 + finalPort);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+        }
     }
 }

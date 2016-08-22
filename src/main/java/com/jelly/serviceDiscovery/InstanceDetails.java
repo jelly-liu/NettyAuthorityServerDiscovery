@@ -3,32 +3,36 @@ package com.jelly.serviceDiscovery;
 /**
  * Created by jelly on 2016-8-22.
  */
-
-/**
- * In a real application, the Service payload will most likely
- * be more detailed than this. But, this gives a good example.
- */
 public class InstanceDetails {
-    private String description;
+    private String host;
+    private int port;
 
     public InstanceDetails() {
-        this("");
     }
 
-    public InstanceDetails(String description) {
-        this.description = description;
+    public InstanceDetails(String host, int port) {
+        this.host = host;
+        this.port = port;
     }
 
-    public void setDescription(String description) {
-        this.description = description;
+    public String getHost() {
+        return host;
     }
 
-    public String getDescription() {
-        return description;
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public void setPort(int port) {
+        this.port = port;
     }
 
     @Override
     public String toString() {
-        return this.description;
+        return "host:" + host + ", port:" + port;
     }
 }
