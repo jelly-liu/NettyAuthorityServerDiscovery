@@ -2,6 +2,8 @@ package com.jelly;
 
 import com.jelly.handler.AuthorityServerHandler;
 import com.jelly.serviceDiscovery.InstanceDetails;
+import com.jelly.serviceDiscovery.ProtoBufInstanceSerializer;
+import com.jelly.serviceDiscovery.ZkServiceConf;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -13,6 +15,12 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.bytes.ByteArrayDecoder;
 import io.netty.handler.codec.bytes.ByteArrayEncoder;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.x.discovery.ServiceDiscovery;
+import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
+import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.log4j.Logger;
 
 import java.util.Random;
@@ -22,6 +30,8 @@ import java.util.Random;
  */
 public class NettyAuthorityServer {
     private static Logger logger = Logger.getLogger(NettyAuthorityServer.class);
+
+    private CuratorFramework client;
 
     public void startNewServer(InstanceDetails instanceDetails) throws Exception {
         String host = instanceDetails.getHost();
@@ -46,6 +56,8 @@ public class NettyAuthorityServer {
 
             // Start the server.
             ChannelFuture channelFuture = serverBootstrap.bind(host, port).sync();
+            //register server
+            registerServer(instanceDetails);
             // Wait until the server socket is closed.
             System.out.println("successfully startNewServer server, host=" + host + ", port=" + port);
             channelFuture.channel().closeFuture().sync();
@@ -55,6 +67,36 @@ public class NettyAuthorityServer {
             // Shut down all event loops to terminate all threads.
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
+        }
+    }
+
+    private void registerServer(InstanceDetails instanceDetails){
+        try {
+            System.out.println("channel active, will register an new Server");
+            if (client == null) {
+                synchronized (logger) {
+                    client = CuratorFrameworkFactory.newClient(ZkServiceConf.ZK_ADDRESS, new ExponentialBackoffRetry(1000, 3));
+                    client.start();
+                }
+            }
+
+            //register again
+            ServiceInstance<InstanceDetails> thisInstance = ServiceInstance.<InstanceDetails>builder()
+                    .name(ZkServiceConf.SERVICE_NAME)
+                    .payload(instanceDetails)
+                    .build();
+
+            ProtoBufInstanceSerializer<InstanceDetails> serializer = new ProtoBufInstanceSerializer(InstanceDetails.class);
+            ServiceDiscovery<InstanceDetails> serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class)
+                    .client(client)
+                    .basePath(ZkServiceConf.PATH)
+                    .thisInstance(thisInstance)
+                    .serializer(serializer)
+                    .build();
+
+            serviceDiscovery.start();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

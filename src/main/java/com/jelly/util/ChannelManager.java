@@ -2,6 +2,7 @@ package com.jelly.util;
 
 import com.jelly.serviceDiscovery.InstanceDetails;
 import io.netty.channel.Channel;
+import io.netty.channel.EventLoopGroup;
 import org.apache.curator.x.discovery.ServiceInstance;
 
 import java.util.*;
@@ -19,6 +20,7 @@ public class ChannelManager {
     private List<String> channelKeyList = new CopyOnWriteArrayList<>();
     private Map<String, Channel> channelMap = new ConcurrentHashMap<>();
     private Map<String, InstanceDetails> channelInstanceMap = new ConcurrentHashMap<>();
+    private Map<String, EventLoopGroup> workerGroupMap = new ConcurrentHashMap<>();
 
     public static class ChannelInstance {
         public Channel channel;
@@ -31,14 +33,22 @@ public class ChannelManager {
     }
 
     public ChannelInstance getRoundRobinChannel(){
+        if(channelKeyList == null || channelKeyList.size() == 0){
+            return null;
+        }
+
         Channel channel = null;
         InstanceDetails instanceDetails = null;
 
         String channelKey = null;
         while(channel == null) {
             try {
-                int number = roundRobinLong.getAndDecrement();
+                if(channelKeyList.size() == 0){
+                    return null;
+                }
+                int number = roundRobinLong.getAndIncrement();
                 int index = number % channelKeyList.size();
+                System.out.println("index=number/size, [" + number + "/" + channelKeyList.size() + "]" + ", index=" + index);
                 channelKey = channelKeyList.get(index);
                 instanceDetails = channelInstanceMap.get(channelKey);
                 channel = channelMap.get(channelKey);
@@ -60,11 +70,12 @@ public class ChannelManager {
         return contains;
     }
 
-    public synchronized void addChannel(String channelKey, Channel channel, InstanceDetails instanceDetails){
+    public synchronized void addChannel(String channelKey, Channel channel, InstanceDetails instanceDetails, EventLoopGroup workerGroup){
         channelKeySet.add(channelKey);
         channelKeyList.add(channelKey);
         channelMap.put(channelKey, channel);
         channelInstanceMap.put(channelKey, instanceDetails);
+        workerGroupMap.put(channelKey, workerGroup);
     }
 
     public synchronized void removeChannel(String channelKey){
@@ -74,6 +85,10 @@ public class ChannelManager {
         Channel channel = channelMap.remove(channelKey);
         if(channel != null){
             channel.close();
+        }
+        EventLoopGroup workerGroup = workerGroupMap.get(channelKey);
+        if(workerGroup != null){
+            workerGroup.shutdownGracefully();
         }
     }
 

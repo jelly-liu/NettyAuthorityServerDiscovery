@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 public class AuthorityServerHandler extends ChannelInboundHandlerAdapter {
     private Logger logger= LoggerFactory.getLogger(AuthorityServerHandler.class);
 
-    private CuratorFramework client;
     private InstanceDetails instanceDetails;
 
     public AuthorityServerHandler(InstanceDetails instanceDetails) {
@@ -32,34 +31,7 @@ public class AuthorityServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        //register server
-        try {
-            System.out.println("channel active, will register an new Server");
-            if (client == null) {
-                synchronized (logger) {
-                    client = CuratorFrameworkFactory.newClient(ZkServiceConf.ZK_ADDRESS, new ExponentialBackoffRetry(1000, 3));
-                    client.start();
-                }
-            }
-
-            //register again
-            ServiceInstance<InstanceDetails> thisInstance = ServiceInstance.<InstanceDetails>builder()
-                    .name(ZkServiceConf.SERVICE_NAME)
-                    .payload(instanceDetails)
-                    .build();
-
-            ProtoBufInstanceSerializer<InstanceDetails> serializer = new ProtoBufInstanceSerializer(InstanceDetails.class);
-            ServiceDiscovery<InstanceDetails> serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class)
-                    .client(client)
-                    .basePath(ZkServiceConf.PATH)
-                    .thisInstance(thisInstance)
-                    .serializer(serializer)
-                    .build();
-
-            serviceDiscovery.start();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        System.out.println("Server channel active");
     }
 
     @Override

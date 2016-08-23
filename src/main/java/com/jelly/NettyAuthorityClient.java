@@ -101,7 +101,7 @@ public class NettyAuthorityClient {
                 workerGroup.shutdownGracefully();
                 System.out.println("failed connect to server, host=" + host + ", port=" + port);
             } else {
-                channelManager.addChannel(channelKey, channel, instanceDetails);
+                channelManager.addChannel(channelKey, channel, instanceDetails, workerGroup);
                 System.out.println("success connect to server, host=" + host + ", port=" + port);
             }
         }catch (Exception e){
@@ -115,21 +115,24 @@ public class NettyAuthorityClient {
         ChannelManager.ChannelInstance channelInstance = null;
         for (int i = 0; i < 1000; i++) {
             channelInstance = channelManager.getRoundRobinChannel();
-            Channel channel = channelInstance.channel;
-            InstanceDetails instanceDetails = channelInstance.instanceDetails;
-            if(channel != null && channel.isOpen() && channel.isActive()){
-                String name = instanceDetails.toString() + "__" + this.clientName + "__abc_def_ghi__" + i;
-                User user = new User(name, i);
-                byte[] bytes = ProtoStuffSerializer.serialize(user);
-                logger.debug("AuthorityClientHandler write msg={}", bytes);
-                channel.writeAndFlush(bytes);
-                try {
-                    Thread.sleep(6000);
-                } catch (InterruptedException e) {
+            if(channelInstance != null){
+                Channel channel = channelInstance.channel;
+                InstanceDetails instanceDetails = channelInstance.instanceDetails;
+                if(channel != null && channel.isOpen() && channel.isActive()){
+                    String name = instanceDetails.toString() + "__" + this.clientName + "__abc_def_ghi__" + i;
+                    User user = new User(name, i);
+                    byte[] bytes = ProtoStuffSerializer.serialize(user);
+                    logger.debug("AuthorityClientHandler write msg={}", bytes);
+                    channel.writeAndFlush(bytes);
+                }else{
+                    if(instanceDetails != null){
+                        channelManager.removeChannel(KeyUtil.toMD5(instanceDetails.toString()));
+                    }
                 }
-            }else{
-                logger.debug("channel is inActive, stop");
-                break;
+            }
+            try {
+                Thread.sleep(6000);
+            } catch (InterruptedException e) {
             }
         }
     }
