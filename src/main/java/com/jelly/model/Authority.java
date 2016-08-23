@@ -1,17 +1,20 @@
 package com.jelly.model;
 
+import com.jelly.serviceDiscovery.InstanceDetails;
 import org.apache.commons.lang3.StringUtils;
 
 /**
  * Created by jelly on 2016-8-19.
  */
 public class Authority {
+    private InstanceDetails instanceDetails;
     private User user;
     private boolean pass;
 
-    public Authority(User use, boolean pass) {
+    public Authority(User use, boolean pass, InstanceDetails instanceDetails) {
         this.user = use;
         this.pass = pass;
+        this.instanceDetails = instanceDetails;
     }
 
     public boolean isPass() {
@@ -47,6 +50,9 @@ public class Authority {
         info += "Authority, pass=" + pass;
         if(user != null){
             info += ", user=" + user;
+        }
+        if(instanceDetails != null){
+            info += ", instanceDetails=" + instanceDetails;
         }
         return info;
     }

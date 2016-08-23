@@ -7,6 +7,7 @@ import com.jelly.serviceDiscovery.ProtoBufInstanceSerializer;
 import com.jelly.serviceDiscovery.ZkServiceConf;
 import com.jelly.util.KeyUtil;
 import com.jelly.util.ProtoStuffSerializer;
+import com.jelly.util.ChannelManager;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -33,78 +34,91 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Created by jelly on 2016-8-19.
  */
-public class NettyClient {
-    private static Logger logger= LoggerFactory.getLogger(NettyClient.class);
+public class NettyAuthorityClient {
+    private static Logger logger= LoggerFactory.getLogger(NettyAuthorityClient.class);
 
-    private static AtomicInteger counter = new AtomicInteger(1);
+    public static final ChannelManager channelManager = new ChannelManager();
+    private static AtomicInteger clientId = new AtomicInteger(1);
 
     private static CuratorFramework client = null;
-    private static ServiceDiscovery<InstanceDetails> serviceDiscovery = null;
+    private static ServiceDiscovery<InstanceDetails> serviceDiscovery;
     private static ServiceCache<InstanceDetails> serviceCache;
-    public static Map<String, String> serverMap = new ConcurrentHashMap<>();
 
     private EventLoopGroup workerGroup;
-    private Channel channel;
     private String clientName;
 
-    public NettyClient(int counter){
-        this.clientName = "NettyClient-" + counter;
+    public NettyAuthorityClient(int counter){
+        this.clientName = "NettyAuthorityClient-" + counter;
     }
 
     public void connect(InstanceDetails instanceDetails) throws Exception{
-        String host = instanceDetails.getHost();
-        int port = instanceDetails.getPort();
+        String channelKey = KeyUtil.toMD5(instanceDetails.toString());
 
-        workerGroup=new NioEventLoopGroup();
-        Bootstrap b = new Bootstrap();
-        b.group(workerGroup);
-        b.channel(NioSocketChannel.class);
-        b.handler(new ChannelInitializer<SocketChannel>() {
-            @Override
-            protected void initChannel(SocketChannel ch) throws Exception {
-                ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 0, 4, 0, 4));//1
-                ch.pipeline().addLast(new ByteArrayDecoder());//2
-                ch.pipeline().addLast(new LengthFieldPrepender(4));//2
-                ch.pipeline().addLast(new ByteArrayEncoder());//1
-                ch.pipeline().addLast(new AuthorityClientHandler(instanceDetails));
+        try {
+            System.out.println("startNewServer new NettyAuthorityClient, InstanceDetails=" + instanceDetails.toString());
+            String host = instanceDetails.getHost();
+            int port = instanceDetails.getPort();
+
+            workerGroup = new NioEventLoopGroup();
+            Bootstrap b = new Bootstrap();
+            b.group(workerGroup);
+            b.channel(NioSocketChannel.class);
+            b.handler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) throws Exception {
+                    ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 0, 4, 0, 4));//1
+                    ch.pipeline().addLast(new ByteArrayDecoder());//2
+                    ch.pipeline().addLast(new LengthFieldPrepender(4));//2
+                    ch.pipeline().addLast(new ByteArrayEncoder());//1
+                    ch.pipeline().addLast(new AuthorityClientHandler(instanceDetails));
+                }
+            });
+
+            ChannelFuture channelFuture = null;
+            Channel channel = null;
+            int i = 0;
+            while (i < 5) {
+                System.out.println("try " + i + " times to connect to server, host=" + host + ", port=" + port);
+                try {
+                    channelFuture = b.connect(host, port).sync();
+                    channel = channelFuture.channel();
+                } catch (Exception e) {
+                    i++;
+                    e.printStackTrace();
+                    Thread.sleep(2000);
+                    continue;
+                }
+                break;
             }
-        });
 
-        int i = 5;
-        while(i > 0) {
-            try {
-                ChannelFuture f = b.connect(host, port).sync();
-                channel = f.channel();
-            } catch (Exception e) {
-                i--;
-                e.printStackTrace();
-                Thread.sleep(2000);
-                continue;
+            if (i >= 5 || channel == null) {
+                channelManager.removeChannel(channelKey);
+                workerGroup.shutdownGracefully();
+                System.out.println("failed connect to server, host=" + host + ", port=" + port);
+            } else {
+                channelManager.addChannel(channelKey, channel, instanceDetails);
+                System.out.println("success connect to server, host=" + host + ", port=" + port);
             }
-            break;
-        }
-
-        if(i <= 0){
-            serverMap.remove(KeyUtil.toMD5(instanceDetails.toString()));
-            workerGroup.shutdownGracefully();
-            System.out.println("failed connect to server, host=" + host + ", port=" + port);
-        }else{
-            serverMap.put(KeyUtil.toMD5(instanceDetails.toString()), instanceDetails.toString());
-            System.out.println("success connect to server, host=" + host + ", port=" + port);
+        }catch (Exception e){
+            channelManager.removeChannel(channelKey);
+            if(workerGroup != null)workerGroup.shutdownGracefully();
+            e.printStackTrace();
         }
     }
 
     private void simulateClientRequireAuthority(){
+        ChannelManager.ChannelInstance channelInstance = null;
         for (int i = 0; i < 1000; i++) {
+            channelInstance = channelManager.getRoundRobinChannel();
+            Channel channel = channelInstance.channel;
+            InstanceDetails instanceDetails = channelInstance.instanceDetails;
             if(channel != null && channel.isOpen() && channel.isActive()){
-                String name = this.clientName + "_abc_def_ghi__" + i;
+                String name = instanceDetails.toString() + "__" + this.clientName + "__abc_def_ghi__" + i;
                 User user = new User(name, i);
                 byte[] bytes = ProtoStuffSerializer.serialize(user);
                 logger.debug("AuthorityClientHandler write msg={}", bytes);
@@ -143,28 +157,25 @@ public class NettyClient {
                                 System.out.println("ServiceWatcher, cacheChanged, active or inactive service instance");
                                 List<ServiceInstance<InstanceDetails>> serviceInstanceList = serviceCache.getInstances();
                                 if (serviceInstanceList == null || serviceInstanceList.size() == 0) {
-                                    System.out.println("ServiceWatcher, cacheChanged, all server crushed");
+                                    System.out.println("ServiceWatcher, cacheChanged, can not find any server");
                                     return;
                                 }
                                 for (ServiceInstance<InstanceDetails> serviceInstance : serviceInstanceList) {
                                     InstanceDetails instanceDetails = serviceInstance.getPayload();
-                                    String key = KeyUtil.toMD5(instanceDetails.toString());
-                                    if (!NettyClient.serverMap.containsKey(key)) {
-                                        NettyClient.serverMap.put(key, instanceDetails.toString());
-                                        System.out.println("start new NettyClient, InstanceDetails=" + instanceDetails.toString());
-                                        new Thread(new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                try {
-                                                    NettyClient nettyClient = new NettyClient(counter.getAndDecrement());
-                                                    nettyClient.connect(instanceDetails);
-                                                    nettyClient.simulateClientRequireAuthority();
-                                                }catch (Exception e){
-                                                    e.printStackTrace();
-                                                }
+                                    String channelKey = KeyUtil.toMD5(instanceDetails.toString());
+                                    if (!channelManager.containsAndAddFlag(channelKey)) {
+                                        new Thread(() -> {
+                                            try {
+                                                NettyAuthorityClient nettyClient = new NettyAuthorityClient(clientId.getAndDecrement());
+                                                nettyClient.connect(instanceDetails);
+                                                nettyClient.simulateClientRequireAuthority();
+                                            }catch (Exception e){
+                                                e.printStackTrace();
                                             }
                                         }).start();
                                     }
+                                    //avoid concurrent, in fact, do not need start client so quickly
+                                    Thread.sleep(500);
                                 }
                             }catch (Exception e){
                                 e.printStackTrace();
@@ -173,7 +184,7 @@ public class NettyClient {
 
                         @Override
                         public void stateChanged(CuratorFramework curatorFramework, ConnectionState connectionState) {
-                            System.out.println("Service Discovery, client lost connection to zookeeper");
+                            System.out.println("Service Discovery, serviceDiscoveryCache lost connection to zookeeper");
                         }
                     });
                     serviceCache.start();
@@ -182,6 +193,19 @@ public class NettyClient {
         }catch (Exception e){
             e.printStackTrace();
         }
+    }
+
+    public static void startNewClient(InstanceDetails instanceDetails){
+        new Thread(()->{
+            try {
+                System.out.println("startNewServer new NettyAuthorityClient, InstanceDetails=" + instanceDetails.toString());
+                NettyAuthorityClient nettyClient = new NettyAuthorityClient(clientId.getAndDecrement());
+                nettyClient.connect(instanceDetails);
+                nettyClient.simulateClientRequireAuthority();
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     public static void main(String[] args) throws Exception {
@@ -196,19 +220,7 @@ public class NettyClient {
             }else{
                 for(ServiceInstance<InstanceDetails> serviceInstance : serviceInstanceCollection){
                     InstanceDetails instanceDetails = serviceInstance.getPayload();
-                    System.out.println("start new NettyClient, InstanceDetails=" + instanceDetails.toString());
-                    new Thread(new Runnable() {
-                        @Override
-                        public void run() {
-                            try {
-                                NettyClient nettyClient = new NettyClient(counter.getAndDecrement());
-                                nettyClient.connect(instanceDetails);
-                                nettyClient.simulateClientRequireAuthority();
-                            }catch (Exception e){
-                                e.printStackTrace();
-                            }
-                        }
-                    }).start();
+                    startNewClient(instanceDetails);
                 }
             }
 

@@ -1,7 +1,7 @@
 package com.jelly.handler;
 
 
-import com.jelly.NettyClient;
+import com.jelly.NettyAuthorityClient;
 import com.jelly.model.Authority;
 import com.jelly.serviceDiscovery.InstanceDetails;
 import com.jelly.util.KeyUtil;
@@ -10,8 +10,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.security.MessageDigest;
 
 /**
  * Created by jelly on 2016-8-19.
@@ -30,6 +28,7 @@ public class AuthorityClientHandler extends ChannelInboundHandlerAdapter {
         System.out.println("AuthorityClientHandler channel already active");
     }
 
+    //receive the authority result from server
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         byte[] bytes = (byte[]) msg;
@@ -45,6 +44,6 @@ public class AuthorityClientHandler extends ChannelInboundHandlerAdapter {
         cause.printStackTrace();
         ctx.close();
         ctx.channel().close();
-        NettyClient.serverMap.remove(KeyUtil.toMD5(instanceDetails.toString()));
+        NettyAuthorityClient.channelManager.removeChannel(KeyUtil.toMD5(instanceDetails.toString()));
     }
 }

@@ -32,6 +32,25 @@ public class InstanceDetails {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        InstanceDetails that = (InstanceDetails) o;
+
+        if (port != that.port) return false;
+        return host != null ? host.equals(that.host) : that.host == null;
+
+    }
+
+    @Override
+    public int hashCode() {
+        int result = host != null ? host.hashCode() : 0;
+        result = 31 * result + port;
+        return result;
+    }
+
+    @Override
     public String toString() {
         return "host:" + host + ", port:" + port;
     }
