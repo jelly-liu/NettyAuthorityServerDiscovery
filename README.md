@@ -3,10 +3,10 @@
 An simple authority project write with java language, and Netty, ZooKeeper, Curator, Curator-Service-Discovery
 
 ## Technical Architecture
-Netty
-ZooKeeper
-Curator, Curator Service Discovery
-Google ProtoBuf
+1. Netty
+2. ZooKeeper
+3. Curator, Curator Service Discovery
+4. Google ProtoBuf
 
 ## How to build
 
