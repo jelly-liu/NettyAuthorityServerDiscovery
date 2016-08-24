@@ -1,19 +1,13 @@
 package com.jelly.handler;
 
+import com.jelly.NettyAuthorityClient;
+import com.jelly.NettyAuthorityServer;
 import com.jelly.model.Authority;
 import com.jelly.model.User;
 import com.jelly.serviceDiscovery.InstanceDetails;
-import com.jelly.serviceDiscovery.ProtoBufInstanceSerializer;
-import com.jelly.serviceDiscovery.ZkServiceConf;
 import com.jelly.util.ProtoStuffSerializer;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.retry.ExponentialBackoffRetry;
-import org.apache.curator.x.discovery.ServiceDiscovery;
-import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
-import org.apache.curator.x.discovery.ServiceInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +25,7 @@ public class AuthorityServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println("Server channel active");
+        System.out.println("channel active, open an new channel to client");
     }
 
     @Override

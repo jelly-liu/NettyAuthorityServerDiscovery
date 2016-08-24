@@ -3,6 +3,7 @@ package com.jelly.util;
 import com.jelly.serviceDiscovery.InstanceDetails;
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.curator.x.discovery.ServiceInstance;
 
 import java.util.*;
@@ -15,20 +16,53 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ChannelManager {
     private AtomicInteger roundRobinLong = new AtomicInteger(0);
-    private List<ServiceInstance<InstanceDetails>> serviceInstanceList = new CopyOnWriteArrayList<>();
-    private Set<String> channelKeySet = new HashSet();
+    //key=MD5(host:port)
+    private Set<String> channelKeySet = new HashSet<>();
+    //key=MD5(host:port)
     private List<String> channelKeyList = new CopyOnWriteArrayList<>();
-    private Map<String, Channel> channelMap = new ConcurrentHashMap<>();
-    private Map<String, InstanceDetails> channelInstanceMap = new ConcurrentHashMap<>();
-    private Map<String, EventLoopGroup> workerGroupMap = new ConcurrentHashMap<>();
+    //key=MD5(host:port)
+    private Map<String, ChannelInstance> channelInstanceMap = new ConcurrentHashMap<>();
 
     public static class ChannelInstance {
+        public String channelKey;
         public Channel channel;
+        public String channelName;
         public InstanceDetails instanceDetails;
+        public EventLoopGroup workerGroup;
 
-        public ChannelInstance(Channel channel, InstanceDetails instanceDetails) {
+        public ChannelInstance(String channelKey, Channel channel, String channelName, InstanceDetails instanceDetails, EventLoopGroup workerGroup) {
+            this.channelKey = channelKey;
             this.channel = channel;
+            this.channelName = channelName;
             this.instanceDetails = instanceDetails;
+            this.workerGroup = workerGroup;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            ChannelInstance that = (ChannelInstance) o;
+
+            return channelKey.equals(that.channelKey);
+
+        }
+
+        @Override
+        public int hashCode() {
+            return channelKey.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return "ChannelInstance{" +
+                    "channelKey='" + channelKey + '\'' +
+                    ", channel=" + channel +
+                    ", channelName='" + channelName + '\'' +
+                    ", instanceDetails=" + instanceDetails +
+                    ", workerGroup=" + workerGroup +
+                    '}';
         }
     }
 
@@ -37,11 +71,9 @@ public class ChannelManager {
             return null;
         }
 
-        Channel channel = null;
-        InstanceDetails instanceDetails = null;
-
         String channelKey = null;
-        while(channel == null) {
+        ChannelInstance channelInstance = null;
+        while(channelInstance == null) {
             try {
                 if(channelKeyList.size() == 0){
                     return null;
@@ -50,16 +82,15 @@ public class ChannelManager {
                 int index = number % channelKeyList.size();
                 System.out.println("index=number/size, [" + number + "/" + channelKeyList.size() + "]" + ", index=" + index);
                 channelKey = channelKeyList.get(index);
-                instanceDetails = channelInstanceMap.get(channelKey);
-                channel = channelMap.get(channelKey);
+                channelInstance = channelInstanceMap.get(channelKey);
             }catch (Exception e){
-                channel = null;
+                channelInstance = null;
                 e.printStackTrace();
             }
         }
 
-        System.out.println("use roundRobin algorithm to find an channel, channelKey=" + channelKey + ", instanceDetails=" + instanceDetails);
-        return new ChannelInstance(channel, instanceDetails);
+        System.out.println("use roundRobin algorithm to find an channelInstance=" + channelInstance);
+        return channelInstance;
     }
 
     public synchronized boolean containsAndAddFlag(String channelKey){
@@ -70,59 +101,62 @@ public class ChannelManager {
         return contains;
     }
 
-    public synchronized void addChannel(String channelKey, Channel channel, InstanceDetails instanceDetails, EventLoopGroup workerGroup){
-        channelKeySet.add(channelKey);
-        channelKeyList.add(channelKey);
-        channelMap.put(channelKey, channel);
-        channelInstanceMap.put(channelKey, instanceDetails);
-        workerGroupMap.put(channelKey, workerGroup);
+    public synchronized void addChannel(ChannelInstance channelInstance){
+        channelKeySet.add(channelInstance.channelKey);
+        channelKeyList.add(channelInstance.channelKey);
+        channelInstanceMap.put(channelInstance.channelKey, channelInstance);
     }
 
     public synchronized void removeChannel(String channelKey){
         channelKeySet.remove(channelKey);
         channelKeyList.remove(channelKey);
-        channelInstanceMap.remove(channelKey);
-        Channel channel = channelMap.remove(channelKey);
-        if(channel != null){
-            channel.close();
+        ChannelInstance channelInstance = channelInstanceMap.remove(channelKey);
+        if(channelInstance == null){
+            return;
         }
-        EventLoopGroup workerGroup = workerGroupMap.get(channelKey);
-        if(workerGroup != null){
-            workerGroup.shutdownGracefully();
+
+        if(channelInstance.channel != null){
+            channelInstance.channel.close();
+        }
+        if(channelInstance.workerGroup != null){
+            channelInstance.workerGroup.shutdownGracefully();
         }
     }
 
-    public List<ServiceInstance<InstanceDetails>> findCrashServer(List<ServiceInstance<InstanceDetails>> currentServiceInstanceList){
-        List<ServiceInstance<InstanceDetails>> crashServiceInstanceList = new ArrayList<>();
-        for(ServiceInstance<InstanceDetails> serviceInstance : serviceInstanceList){
-            InstanceDetails instanceDetails = serviceInstance.getPayload();
+    public List<InstanceDetails> selectOutCrashServer(List<ServiceInstance<InstanceDetails>> latestServiceInstanceList){
+        List<InstanceDetails> crashServiceInstanceList = new ArrayList<>();
+        for(String channelKey : this.channelInstanceMap.keySet()){
             boolean crashServer = true;
-            for(ServiceInstance<InstanceDetails> serviceInstance2 : currentServiceInstanceList){
+            for(ServiceInstance<InstanceDetails> serviceInstance2 : latestServiceInstanceList){
                 InstanceDetails instanceDetails2 = serviceInstance2.getPayload();
-                if(instanceDetails.equals(instanceDetails2)){
+                if(StringUtils.equals(channelKey, KeyUtil.toMD5(instanceDetails2.toString()))){
                     crashServer = false;
+                    break;
                 }
             }
             if(crashServer){
-                crashServiceInstanceList.add(serviceInstance);
+                ChannelInstance channelInstance = channelInstanceMap.get(channelKey);
+                if(channelInstance != null){
+                    if(channelInstance.instanceDetails != null){
+                        crashServiceInstanceList.add(channelInstance.instanceDetails);
+                    }
+                }
             }
         }
         return crashServiceInstanceList;
     }
 
-    public synchronized List<ServiceInstance<InstanceDetails>> findNewServer(List<ServiceInstance<InstanceDetails>> currentServiceInstanceList){
-        List<ServiceInstance<InstanceDetails>> newServiceInstanceList = new ArrayList<>();
-        for(ServiceInstance<InstanceDetails> serviceInstance : currentServiceInstanceList){
+    public synchronized List<InstanceDetails> selectOutNewServer(List<ServiceInstance<InstanceDetails>> latestServiceInstanceList){
+        List<InstanceDetails> newServiceInstanceList = new ArrayList<>();
+        Set<String> channelKeySet = channelInstanceMap.keySet();
+        for(ServiceInstance<InstanceDetails> serviceInstance : latestServiceInstanceList){
             InstanceDetails instanceDetails = serviceInstance.getPayload();
-            boolean newServer = true;
-            for(ServiceInstance<InstanceDetails> serviceInstance2 : serviceInstanceList){
-                InstanceDetails instanceDetails2 = serviceInstance2.getPayload();
-                if(instanceDetails.equals(instanceDetails2)){
-                    newServer = false;
-                }
+            boolean newServer = false;
+            if(!channelKeySet.contains(KeyUtil.toMD5(instanceDetails.toString()))){
+                newServer = true;
             }
             if(newServer){
-                newServiceInstanceList.add(serviceInstance);
+                newServiceInstanceList.add(serviceInstance.getPayload());
             }
         }
         return newServiceInstanceList;

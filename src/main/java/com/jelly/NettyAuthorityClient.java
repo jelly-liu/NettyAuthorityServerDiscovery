@@ -1,13 +1,11 @@
 package com.jelly;
 
 import com.jelly.handler.AuthorityClientHandler;
-import com.jelly.model.User;
 import com.jelly.serviceDiscovery.InstanceDetails;
-import com.jelly.serviceDiscovery.ProtoBufInstanceSerializer;
+import com.jelly.serviceDiscovery.ServiceManager;
 import com.jelly.serviceDiscovery.ZkServiceConf;
-import com.jelly.util.KeyUtil;
-import com.jelly.util.ProtoStuffSerializer;
 import com.jelly.util.ChannelManager;
+import com.jelly.util.KeyUtil;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -20,20 +18,11 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 import io.netty.handler.codec.LengthFieldPrepender;
 import io.netty.handler.codec.bytes.ByteArrayDecoder;
 import io.netty.handler.codec.bytes.ByteArrayEncoder;
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.framework.state.ConnectionState;
-import org.apache.curator.retry.ExponentialBackoffRetry;
-import org.apache.curator.x.discovery.ServiceCache;
-import org.apache.curator.x.discovery.ServiceDiscovery;
-import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
-import org.apache.curator.x.discovery.details.ServiceCacheListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -43,11 +32,7 @@ public class NettyAuthorityClient {
     private static Logger logger= LoggerFactory.getLogger(NettyAuthorityClient.class);
 
     public static final ChannelManager channelManager = new ChannelManager();
-    private static AtomicInteger clientId = new AtomicInteger(1);
-
-    private static CuratorFramework client = null;
-    private static ServiceDiscovery<InstanceDetails> serviceDiscovery;
-    private static ServiceCache<InstanceDetails> serviceCache;
+    public static AtomicInteger clientId = new AtomicInteger(1);
 
     private EventLoopGroup workerGroup;
     private String clientName;
@@ -101,7 +86,7 @@ public class NettyAuthorityClient {
                 workerGroup.shutdownGracefully();
                 System.out.println("failed connect to server, host=" + host + ", port=" + port);
             } else {
-                channelManager.addChannel(channelKey, channel, instanceDetails, workerGroup);
+                channelManager.addChannel(new ChannelManager.ChannelInstance(channelKey, channel, clientName, instanceDetails, workerGroup));
                 System.out.println("success connect to server, host=" + host + ", port=" + port);
             }
         }catch (Exception e){
@@ -111,100 +96,12 @@ public class NettyAuthorityClient {
         }
     }
 
-    private void simulateClientRequireAuthority(){
-        ChannelManager.ChannelInstance channelInstance = null;
-        for (int i = 0; i < 1000; i++) {
-            channelInstance = channelManager.getRoundRobinChannel();
-            if(channelInstance != null){
-                Channel channel = channelInstance.channel;
-                InstanceDetails instanceDetails = channelInstance.instanceDetails;
-                if(channel != null && channel.isOpen() && channel.isActive()){
-                    String name = instanceDetails.toString() + "__" + this.clientName + "__abc_def_ghi__" + i;
-                    User user = new User(name, i);
-                    byte[] bytes = ProtoStuffSerializer.serialize(user);
-                    logger.debug("AuthorityClientHandler write msg={}", bytes);
-                    channel.writeAndFlush(bytes);
-                }else{
-                    if(instanceDetails != null){
-                        channelManager.removeChannel(KeyUtil.toMD5(instanceDetails.toString()));
-                    }
-                }
-            }
-            try {
-                Thread.sleep(6000);
-            } catch (InterruptedException e) {
-            }
-        }
-    }
-
-    private static void initCuratorClientAndServiceDiscovery(){
-        try {
-            if (client == null) {
-                synchronized (logger) {
-                    client = CuratorFrameworkFactory.newClient(ZkServiceConf.ZK_ADDRESS, new ExponentialBackoffRetry(1000, 3));
-                    client.start();
-                }
-            }
-
-            if (serviceDiscovery == null) {
-                synchronized (logger) {
-                    ProtoBufInstanceSerializer<InstanceDetails> serializer = new ProtoBufInstanceSerializer(InstanceDetails.class);
-                    serviceDiscovery = ServiceDiscoveryBuilder.builder(InstanceDetails.class).client(client).basePath(ZkServiceConf.PATH).serializer(serializer).build();
-                    serviceDiscovery.start();
-
-                    serviceCache = serviceDiscovery.serviceCacheBuilder().name(ZkServiceConf.SERVICE_NAME).build();
-                    serviceCache.addListener(new ServiceCacheListener() {
-                        @Override
-                        public void cacheChanged() {
-                            try {
-                                System.out.println("ServiceWatcher, cacheChanged, active or inactive service instance");
-                                List<ServiceInstance<InstanceDetails>> serviceInstanceList = serviceCache.getInstances();
-                                if (serviceInstanceList == null || serviceInstanceList.size() == 0) {
-                                    System.out.println("ServiceWatcher, cacheChanged, can not find any server");
-                                    return;
-                                }
-                                for (ServiceInstance<InstanceDetails> serviceInstance : serviceInstanceList) {
-                                    InstanceDetails instanceDetails = serviceInstance.getPayload();
-                                    String channelKey = KeyUtil.toMD5(instanceDetails.toString());
-                                    if (!channelManager.containsAndAddFlag(channelKey)) {
-                                        new Thread(() -> {
-                                            try {
-                                                NettyAuthorityClient nettyClient = new NettyAuthorityClient(clientId.getAndDecrement());
-                                                nettyClient.connect(instanceDetails);
-                                                nettyClient.simulateClientRequireAuthority();
-                                            }catch (Exception e){
-                                                e.printStackTrace();
-                                            }
-                                        }).start();
-                                    }
-                                    //avoid concurrent, in fact, do not need start client so quickly
-                                    Thread.sleep(500);
-                                }
-                            }catch (Exception e){
-                                e.printStackTrace();
-                            }
-                        }
-
-                        @Override
-                        public void stateChanged(CuratorFramework curatorFramework, ConnectionState connectionState) {
-                            System.out.println("Service Discovery, serviceDiscoveryCache lost connection to zookeeper");
-                        }
-                    });
-                    serviceCache.start();
-                }
-            }
-        }catch (Exception e){
-            e.printStackTrace();
-        }
-    }
-
-    public static void startNewClient(InstanceDetails instanceDetails){
+    public static void openChannelToNewServer(InstanceDetails instanceDetails){
         new Thread(()->{
             try {
                 System.out.println("startNewServer new NettyAuthorityClient, InstanceDetails=" + instanceDetails.toString());
                 NettyAuthorityClient nettyClient = new NettyAuthorityClient(clientId.getAndDecrement());
                 nettyClient.connect(instanceDetails);
-                nettyClient.simulateClientRequireAuthority();
             }catch (Exception e){
                 e.printStackTrace();
             }
@@ -213,17 +110,21 @@ public class NettyAuthorityClient {
 
     public static void main(String[] args) throws Exception {
         try {
-            //init
-            initCuratorClientAndServiceDiscovery();
+            //we assumption that, there is a lot of User
+            //send each User to an random serverChannel, after the server done permissions validation, client will receive result and print it
+            UserAuthoritySimulator.simulateClientRequireAuthorityToServer();
 
-            //init connection to server
-            Collection<ServiceInstance<InstanceDetails>> serviceInstanceCollection = serviceDiscovery.queryForInstances(ZkServiceConf.SERVICE_NAME);
+            //init curatorClient, serviceDiscovery, serviceDiscoveryCache
+            ServiceManager.watch();
+
+            //init channel to all active servers
+            Collection<ServiceInstance<InstanceDetails>> serviceInstanceCollection = ServiceManager.queryForInstances(ZkServiceConf.SERVICE_NAME);
             if(serviceInstanceCollection == null || serviceInstanceCollection.size() == 0){
                 System.out.println("can not find any ServiceInstance");
             }else{
                 for(ServiceInstance<InstanceDetails> serviceInstance : serviceInstanceCollection){
                     InstanceDetails instanceDetails = serviceInstance.getPayload();
-                    startNewClient(instanceDetails);
+                    openChannelToNewServer(instanceDetails);
                 }
             }
 
