@@ -18,3 +18,6 @@ An simple authority project write with java language, and Netty, ZooKeeper, Cura
 1. run NettyAuthorityClient, only one times, this client will watch all the time if new server created or not
 2. for each time when you run NettyAuthorityServer, will start 1 new Server and register to zookeeper, then client will discovery new server
 3. that's all, see the log
+
+##Architecture
+![alt text](http://img.blog.csdn.net/20160825123128945)
