@@ -25,7 +25,7 @@ public class AuthorityClientHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        System.out.println("AuthorityClientHandler channel already active");
+        System.out.println("client channel active, open an new channel to server, address=" + ctx.channel().localAddress().toString());
     }
 
     //receive the authority result from server

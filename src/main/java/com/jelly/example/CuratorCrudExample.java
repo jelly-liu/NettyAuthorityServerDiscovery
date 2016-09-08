@@ -14,7 +14,9 @@ import java.io.InputStreamReader;
  * Created by jelly on 2016-8-22.
  */
 public class CuratorCrudExample {
-    private static final String delete = "delete";
+    private static final String add = "add";
+    private static final String delete = "del";
+    private static final String bye = "bye";
     private static CuratorFramework client;
 
     public static void main(String[] args) throws Exception {
@@ -41,12 +43,16 @@ public class CuratorCrudExample {
 
         try {
             String[] segments = StringUtils.split(commandLine, " ");
-            String command = segments[0].toLowerCase();
+            String command = segments[0].trim().toLowerCase();
             String path = segments[1];
 
-            if (StringUtils.equals(delete, command)) {
+            if (StringUtils.equals(add, command)){
+                ZKPaths.mkdirs(client.getZookeeperClient().getZooKeeper(), path, true);
+            } else if (StringUtils.equals(delete, command)) {
                 ZKPaths.deleteChildren(client.getZookeeperClient().getZooKeeper(), path, true);
-            } else {
+            } else if (StringUtils.equals(bye, command)){
+                CloseableUtils.closeQuietly(client);
+            }else {
                 System.out.println("command no support, command=" + command);
             }
         }catch (Exception e){
